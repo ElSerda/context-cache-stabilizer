@@ -88,6 +88,10 @@ def test_prefix_reuse_against_the_previous_request():
     r = ccs.measure(changed, "s")
     assert r["prefix"]["same_leading_messages"] == 1  # only the system message is unchanged
     assert r["prefix"]["previous_kept_pct"] < 100
+    ccs._previous.clear()
+    ccs.measure({"messages": [{"role": "user", "content": "q1"}]}, "k")
+    reordered = ccs.measure({"messages": [{"content": "q1", "role": "user"}, {"role": "assistant", "content": "a"}]}, "k")
+    assert reordered["prefix"]["previous_kept_pct"] == 100.0  # field order is not a change
     other = ccs.measure(request(("user", "q1")), "other")
     assert "prefix" not in other  # conversations are kept apart
 

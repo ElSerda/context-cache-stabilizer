@@ -143,7 +143,9 @@ def measure(request: dict, session_id: str = "", **context: Any) -> dict:
     # What the provider receives, in order: tools, system, messages (Anthropic and OpenAI both
     # read their cached prefix in this order). Serialized once to compare with the previous request.
     # No closing wrapper: a request that only appends to the previous one keeps all of it as prefix.
-    serial = "".join(json.dumps(part, ensure_ascii=False, default=str) + "\n"
+    # Keys sorted: Hermes rebuilds stored messages with their fields in another order at a turn
+    # boundary, which no chat template or provider cache sees (seen live: "breaks" with no ttfb rise).
+    serial = "".join(json.dumps(part, ensure_ascii=False, default=str, sort_keys=True) + "\n"
                      for part in [tools, request.get("system"), request.get("instructions"), *messages])
     fingerprints = [hash(json.dumps(m, ensure_ascii=False, default=str, sort_keys=True)) for m in messages]
     record = {
