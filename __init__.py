@@ -166,5 +166,5 @@ def register(ctx_instance) -> None:
     global ctx
     ctx = ctx_instance
 
-    # Register llm_request middleware to stabilize the prompt prefix
-    ctx.register_middleware("llm_request", on_llm_request)
+    # Register pre_llm_call hook to stabilize the prompt prefix
+    ctx.register_hook("pre_llm_call", on_llm_request)
