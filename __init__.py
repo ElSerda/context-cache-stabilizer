@@ -57,7 +57,11 @@ def _stabilize_tools(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _freeze_timestamps(request: dict[str, Any]) -> dict[str, Any]:
-    """Replace dynamic timestamps with a fixed value to preserve cache."""
+    """Replace dynamic timestamps with a fixed value to preserve cache.
+
+    Handles both string content and list-of-blocks (multimodal) message formats.
+    Only freezes timestamps in string parts; leaves images/files/other blocks untouched.
+    """
     if "messages" not in request or not isinstance(request["messages"], list):
         return request
 
@@ -70,6 +74,17 @@ def _freeze_timestamps(request: dict[str, Any]) -> dict[str, Any]:
             new_content, count = _TIMESTAMP_RE.subn(_FROZEN_TIMESTAMP, content)
             frozen_count += count
             stable_messages.append({**msg, "content": new_content})
+        elif isinstance(content, list):
+            # Multimodal: freeze timestamps in text blocks only
+            new_blocks = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and "text" in block:
+                    new_text, count = _TIMESTAMP_RE.subn(_FROZEN_TIMESTAMP, block["text"])
+                    frozen_count += count
+                    new_blocks.append({**block, "text": new_text})
+                else:
+                    new_blocks.append(block)
+            stable_messages.append({**msg, "content": new_blocks})
         else:
             stable_messages.append(msg)
 
