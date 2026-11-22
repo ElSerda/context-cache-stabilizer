@@ -46,7 +46,9 @@ The report shows one row per request:
 | new           | share of this request that was not in the previous one                                    |
 | ttfb          | time to the first streamed chunk                                                          |
 
-Then the parts of the latest system prompt and its tools, largest first.
+Then the parts of the latest system prompt, the parameters of the latest request, and its tools, largest first.
+
+The parameters show what Hermes really sent besides the prompt. Generation settings keep their value (`reasoning_effort`, `temperature`, `max_tokens`, `stream`, `tool_choice`, thinking switches such as `chat_template_kwargs.enable_thinking`…); every other parameter appears by name only (`extra_headers: "<dict>"`), so no header, key or metadata value is written. `extra_body`, which the OpenAI SDK merges into the request body, is opened one level.
 
 LM Studio reports no cached tokens. A short ttfb there is the sign that the prompt was mostly read from the KV cache.
 

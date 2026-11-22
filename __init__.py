@@ -127,6 +127,43 @@ def _tool_name(tool: Any) -> str:
     return str(fn.get("name") or "?")
 
 
+# Generation settings whose values are recorded (small scalars or flags); every other parameter is
+# recorded by name only, so no prompt text, header or metadata value is ever written.
+_SETTING_VALUES = {"model", "stream", "temperature", "top_p", "top_k", "min_p", "max_tokens",
+                   "max_completion_tokens", "reasoning_effort", "tool_choice", "parallel_tool_calls",
+                   "seed", "frequency_penalty", "presence_penalty", "repeat_penalty", "service_tier",
+                   "enable_thinking", "thinking", "effort", "enabled", "budget_tokens", "include_reasoning",
+                   "reasoning", "chat_template_kwargs", "prompt_cache_key", "store"}
+_SKIP_PARAMS = {"messages", "input", "tools", "system", "instructions"}  # measured above
+
+
+def _setting_value(value: Any, depth: int = 0) -> Any:
+    """A setting's value if it is small and plain (a dict only of such values), else its type name."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value if len(value) <= 40 else f"<str {len(value)}>"
+    if isinstance(value, dict) and depth < 2:
+        return {k: (_setting_value(v, depth + 1) if k in _SETTING_VALUES else f"<{type(v).__name__}>")
+                for k, v in value.items()}
+    return f"<{type(value).__name__}>"
+
+
+def _params(request: dict) -> dict:
+    """The parameters Hermes sent besides the prompt: settings with their values, the rest by name.
+    extra_body (OpenAI SDK: merged into the JSON body) is opened one level."""
+    out = {}
+    for key, value in request.items():
+        if key in _SKIP_PARAMS:
+            continue
+        if key == "extra_body" and isinstance(value, dict):
+            out[key] = {k: (_setting_value(v) if k in _SETTING_VALUES else f"<{type(v).__name__}>")
+                        for k, v in value.items()}
+        else:
+            out[key] = _setting_value(value) if key in _SETTING_VALUES else f"<{type(value).__name__}>"
+    return out
+
+
 def measure(request: dict, session_id: str = "", **context: Any) -> dict:
     """The record for one request (pure: also used by the tests)."""
     messages = _messages(request)
@@ -157,6 +194,7 @@ def measure(request: dict, session_id: str = "", **context: Any) -> dict:
         "tools": {"count": len(tools), "chars": sum(c for _, c in tool_sizes), "top": tool_sizes[:TOP_TOOLS]},
         "system": {"chars": len(system), "sections": _sections(system)},
         "messages": {"count": len(messages), "by_role": by_role, "last_user_chars": last_user},
+        "params": _params(request),
     }
     with _lock:
         prev = _previous.get(session_id) if session_id else None

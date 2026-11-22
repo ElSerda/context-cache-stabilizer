@@ -96,6 +96,20 @@ def test_prefix_reuse_against_the_previous_request():
     assert "prefix" not in other  # conversations are kept apart
 
 
+def test_parameters_are_recorded_without_content():
+    req = dict(request(("user", "secret question")), stream=True, temperature=0.6, reasoning_effort="max",
+               extra_headers={"Authorization": "Bearer sk-123"}, timeout=30,
+               extra_body={"chat_template_kwargs": {"enable_thinking": True}, "metadata": {"user": "me"},
+                           "reasoning": {"effort": "high", "summary": "a long text " * 10}})
+    p = ccs.measure(req, "p")["params"]
+    assert p["reasoning_effort"] == "max" and p["stream"] is True and p["temperature"] == 0.6
+    assert p["extra_headers"] == "<dict>" and "sk-123" not in json.dumps(p)
+    assert p["extra_body"]["chat_template_kwargs"] == {"enable_thinking": True}
+    assert p["extra_body"]["metadata"] == "<dict>"
+    assert p["extra_body"]["reasoning"] == {"effort": "high", "summary": "<str>"}
+    assert "messages" not in p and "tools" not in p and "secret" not in json.dumps(p)
+
+
 def test_anthropic_and_responses_shapes():
     ccs._previous.clear()
     r = ccs.measure({"system": [{"type": "text", "text": SYSTEM}], "messages": [{"role": "user", "content": "q"}],

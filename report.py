@@ -76,6 +76,9 @@ def render(rows: list[dict], session: str = "", last: int = 30) -> str:
     out += ["", "System prompt of the latest request, largest parts first:"]
     sections = sorted(latest["system"]["sections"], key=lambda s: -s[1])
     out.append(_table(["part", "chars"], [[t, str(c)] for t, c in sections]))
+    if latest.get("params"):
+        out += ["", "Parameters of the latest request (settings with values, others by name):"]
+        out += [f"  {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in latest["params"].items()]
     out += ["", f"Tools of the latest request ({latest['tools']['count']}), largest first:"]
     out.append(_table(["tool", "chars"], [[n, str(c)] for n, c in latest["tools"]["top"]]))
     out += ["", "est tok = request characters / 4. prompt tok / cached = what the provider reported "
