@@ -58,17 +58,42 @@ The plugin registers an `llm_request` middleware hook that runs **before** Herme
 def on_llm_request(**kwargs):
     request = dict(kwargs["request"])  # full provider kwargs
     
-    # Sort tools alphabetically
+    # Sort tools alphabetically (stable sort preserves relative order)
     if "tools" in request:
         tools.sort(key=lambda t: t["function"]["name"])
     
-    # Freeze timestamps
+    # Freeze timestamps (replaces dynamic dates with fixed value)
     messages = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}', '2026-11-22 00:00', request["messages"])
+    
+    # Optional: inject Anthropic-style cache breakpoints
+    if "cache_breakpoint_tokens" in config:
+        prepend_cache_markers(request["system_message"], config.cache_breakpoint_tokens)
     
     return {"request": request}
 ```
 
 This preserves the KV-cache prefix across turns because the provider sees an identical prompt structure.
+
+## Logging
+
+The plugin logs debug messages when stabilizations are applied:
+
+- `Stabilized N tool definitions` — when tools are sorted
+- `Froze N timestamps` — when timestamps are replaced
+- `Injected N cache breakpoint tokens` — when breakpoints are added
+
+Enable debug logging in Hermes config to see these:
+
+```yaml
+logging:
+  level: DEBUG
+  filters:
+    - context-cache-stabilizer
+```
+
+## Error handling
+
+The middleware is wrapped in try/except so a crash here **never breaks the turn**. If an error occurs, it logs the exception and returns `None` (skipping stabilization for that request).
 
 ## Limitations
 
