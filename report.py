@@ -54,6 +54,10 @@ def render(rows: list[dict], session: str = "", last: int = 30) -> str:
         return f"No request measured for session {session}."
     out = [f"Session {picked[-1].get('session_id')}  ({len(picked)} requests, model {picked[-1].get('model')})", ""]
     table = []
+    for prev, r in zip([None] + picked[:-1], picked):
+        prefix = r.get("prefix") or {}
+        if prev and "common_chars" in prefix and "previous_kept_pct" not in prefix:  # 0.2.0 records
+            r["prefix"] = dict(prefix, previous_kept_pct=round(100 * prefix["common_chars"] / max(1, prev["total_chars"]), 1))
     for i, r in enumerate(picked[-last:], max(1, len(picked) - last + 1)):
         u, roles, prefix = r["usage"], r["messages"]["by_role"], r.get("prefix") or {}
         table.append([
@@ -62,11 +66,12 @@ def render(rows: list[dict], session: str = "", last: int = 30) -> str:
             _k(r["tools"]["chars"]), _k(r["system"]["chars"]),
             _k(roles.get("user", {}).get("chars")), _k(roles.get("assistant", {}).get("chars")),
             _k(roles.get("tool", {}).get("chars")),
-            f"{prefix['common_pct']}%" if "common_pct" in prefix else "-",
+            f"{prefix['previous_kept_pct']}%" if "previous_kept_pct" in prefix else "-",
+            f"{100 - prefix['common_pct']:.1f}%" if "common_pct" in prefix else "-",
             f"{u['ttfb_s']}s" if isinstance(u.get("ttfb_s"), (int, float)) else "-",
         ])
     out.append(_table(["#", "time", "est tok", "prompt tok", "cached", "tools ch", "system ch",
-                       "user ch", "assist ch", "tool ch", "same as prev", "ttfb"], table))
+                       "user ch", "assist ch", "tool ch", "prev kept", "new", "ttfb"], table))
     latest = picked[-1]
     out += ["", "System prompt of the latest request, largest parts first:"]
     sections = sorted(latest["system"]["sections"], key=lambda s: -s[1])
@@ -74,8 +79,9 @@ def render(rows: list[dict], session: str = "", last: int = 30) -> str:
     out += ["", f"Tools of the latest request ({latest['tools']['count']}), largest first:"]
     out.append(_table(["tool", "chars"], [[n, str(c)] for n, c in latest["tools"]["top"]]))
     out += ["", "est tok = request characters / 4. prompt tok / cached = what the provider reported "
-                "(LM Studio reports no cached tokens: a short ttfb is the sign). same as prev = share of "
-                "the request identical to the previous one of this conversation, from the start."]
+                "(LM Studio reports no cached tokens: a short ttfb is the sign). prev kept = share of the "
+                "previous request found unchanged at the start of this one (below 100%: a prefix cache "
+                "recomputes from the first difference). new = share of this request not in the previous one."]
     return "\n".join(out)
 
 

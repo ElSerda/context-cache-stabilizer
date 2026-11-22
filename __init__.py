@@ -142,8 +142,9 @@ def measure(request: dict, session_id: str = "", **context: Any) -> dict:
     last_user = next((len(_text(m.get("content"))) for m in reversed(messages) if m.get("role") == "user"), 0)
     # What the provider receives, in order: tools, system, messages (Anthropic and OpenAI both
     # read their cached prefix in this order). Serialized once to compare with the previous request.
-    serial = json.dumps({"tools": tools, "system": request.get("system"), "instructions": request.get("instructions"),
-                         "messages": messages}, ensure_ascii=False, default=str)
+    # No closing wrapper: a request that only appends to the previous one keeps all of it as prefix.
+    serial = "".join(json.dumps(part, ensure_ascii=False, default=str) + "\n"
+                     for part in [tools, request.get("system"), request.get("instructions"), *messages])
     fingerprints = [hash(json.dumps(m, ensure_ascii=False, default=str, sort_keys=True)) for m in messages]
     record = {
         "type": "request", "ts": round(time.time(), 3), "session_id": session_id,
@@ -169,7 +170,10 @@ def measure(request: dict, session_id: str = "", **context: Any) -> dict:
             if a != b:
                 break
             leading += 1
+        # previous_kept_pct is what a prefix cache cares about: below 100, something before the new
+        # messages changed and everything after it is computed again.
         record["prefix"] = {"common_chars": common, "common_pct": round(100 * common / max(1, len(serial)), 1),
+                            "previous_kept_pct": round(100 * common / max(1, len(prev["serial"])), 1),
                             "same_leading_messages": leading, "previous_messages": len(prev["fingerprints"])}
     return record
 

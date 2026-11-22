@@ -42,7 +42,8 @@ The report shows one row per request:
 | tools ch      | characters of the tool definitions                                                        |
 | system ch     | characters of the system prompt                                                           |
 | user / assist / tool ch | characters of the messages of each role                                         |
-| same as prev  | share of the request identical to the previous one of the conversation, from the start    |
+| prev kept     | share of the previous request found unchanged at the start of this one; below 100%, a prefix cache recomputes everything from the first difference |
+| new           | share of this request that was not in the previous one                                    |
 | ttfb          | time to the first streamed chunk                                                          |
 
 Then the parts of the latest system prompt and its tools, largest first.
@@ -62,7 +63,8 @@ plugins:
 ## Limits
 
 - Auxiliary calls (compression summaries, titles) do not go through `llm_execution` and are not measured.
-- The "same as prev" share compares the request as Hermes serializes it, not the provider's tokens. A difference near the start still breaks a prefix cache even if the share stays high.
+- "prev kept" compares the request as Hermes serializes it, not the provider's tokens. A chat template can still render the same JSON differently (reasoning of earlier turns, for example).
+- The system prompt is split at its headings ("# ", "## ", "<block>"). Text without a heading is counted in the part above it: the last section of an auto-loaded skill can absorb the Hermes text that follows.
 
 ## License
 

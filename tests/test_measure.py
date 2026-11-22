@@ -83,9 +83,11 @@ def test_prefix_reuse_against_the_previous_request():
     r = ccs.measure(request(("user", "q1"), ("assistant", "a1"), ("user", "q2")), "s")
     assert r["prefix"]["same_leading_messages"] == 2 and r["prefix"]["previous_messages"] == 2
     assert 50 < r["prefix"]["common_pct"] < 100
+    assert r["prefix"]["previous_kept_pct"] == 100.0  # only appended: a prefix cache reuses all of it
     changed = request(("user", "q1 edited"), ("assistant", "a1"), ("user", "q2"))
     r = ccs.measure(changed, "s")
     assert r["prefix"]["same_leading_messages"] == 1  # only the system message is unchanged
+    assert r["prefix"]["previous_kept_pct"] < 100
     other = ccs.measure(request(("user", "q1")), "other")
     assert "prefix" not in other  # conversations are kept apart
 
