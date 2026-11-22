@@ -1,0 +1,10 @@
+# Python dependencies of the context-cache-stabilizer Hermes plugin.
+# This plugin has no external dependencies — only stdlib (re, typing).
+
+[project]
+name = "context-cache-stabilizer"
+version = "0.1.0"
+description = "Hermes Agent plugin: stabilizes LLM request prefix between turns to preserve KV/prompt cache with LM Studio"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []

@@ -1,0 +1,26 @@
+name: context-cache-stabilizer
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+description: "Stabilizes the LLM request prefix between turns to preserve KV/prompt cache with LM Studio"
+author: ElSerda
+license: MIT
+requires_hermes: ">=0.22.6"
+tags: [cache, performance, lm-studio]
+
+config_schema:
+  stabilize_tools_order:
+    type: bool
+    default: true
+    label: Sort tool definitions alphabetically
+    description: "Prevents KV-cache invalidation when Hermes reorders tools between turns"
+  freeze_timestamps:
+    type: bool
+    default: true
+    label: Freeze dynamic timestamps
+    description: "Replaces changing timestamps in messages with a fixed value to preserve cache across same-day sessions"
+  cache_breakpoint_tokens:
+    type: str
+    default: ""
+    label: Custom cache breakpoint tokens
+    description: "Optional tokens (space-separated) that mark cache breakpoints in the system prompt. Leave empty for auto-detect."
