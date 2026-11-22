@@ -1,104 +1,68 @@
 # context-cache-stabilizer
 
-Hermes Agent plugin that stabilizes the LLM request prefix between turns to preserve KV/prompt cache with LM Studio (and any OpenAI-compatible backend).
+A Hermes Agent plugin that measures what Hermes sends to the model on every request. It changes nothing: it reads the request, hands it on, and writes down sizes.
 
-## Problem
+It answers questions such as:
 
-When Hermes assembles the prompt for each turn, it can change:
-- **Tool definitions order** — Hermes reorders tools dynamically → 37K+ tokens of KV-cache lost
-- **Timestamps in messages** — `2026-11-22T10:15` changes every turn → cache invalidated
-
-## Solution
-
-Registers `llm_request` middleware that intercepts provider kwargs before execution and rewrites them to be stable across turns.
-
-### What it does
-
-| Setting | Default | Effect |
-|---|---|---|
-| `stabilize_tools_order` | `true` | Sorts tool definitions alphabetically (prevents shuffle-induced cache breaks) |
-| `freeze_timestamps` | `true` | Replaces changing timestamps with a fixed value (`2026-11-22 00:00`) |
-| `cache_breakpoint_tokens` | `""` | Optional Anthropic-style cache breakpoint tokens (space-separated) |
-
-## Installation
-
-```bash
-# Install from local directory
-hermes plugins install F:/GPU/context-cache-stabilizer --no-enable
-
-# Enable the plugin
-hermes plugins enable context-cache-stabilizer
-```
-
-Or clone directly:
-
-```bash
-cd ~/.hermes/plugins/
-git clone F:/GPU/context-cache-stabilizer.git
-hermes plugins enable context-cache-stabilizer
-```
-
-## Configuration
-
-Add to `~/.hermes/config.yaml`:
-
-```yaml
-plugins:
-  context-cache-stabilizer:
-    stabilize_tools_order: true   # Sort tools alphabetically
-    freeze_timestamps: true       # Freeze dynamic timestamps
-    cache_breakpoint_tokens: ""   # Optional: "<token1> <token2>" for Anthropic breakpoints
-```
+- How big is the fixed part (tools, system prompt) and which pieces weigh the most?
+- How fast does the conversation history grow, and what fills it: user messages, answers, tool results?
+- How much of each request is identical to the previous one, so a prefix cache (Anthropic, OpenAI, llama.cpp / LM Studio) can reuse it?
+- How many tokens did the provider really count, and how many came from its cache?
 
 ## How it works
 
-The plugin registers an `llm_request` middleware hook that runs **before** Hermes calls the provider:
+- **Middleware `llm_execution`:** sees the request exactly as it goes to the provider, after every `llm_request` middleware (webgraft removing its footers, for example), and hands it on unchanged.
+- **Hook `post_api_request`:** records the token counts the provider reported for that request.
 
-```python
-def on_llm_request(**kwargs):
-    request = dict(kwargs["request"])  # full provider kwargs
-    
-    # Sort tools alphabetically (stable sort preserves relative order)
-    if "tools" in request:
-        tools.sort(key=lambda t: t["function"]["name"])
-    
-    # Freeze timestamps (replaces dynamic dates with fixed value)
-    messages = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}', '2026-11-22 00:00', request["messages"])
-    
-    # Optional: inject Anthropic-style cache breakpoints
-    if "cache_breakpoint_tokens" in config:
-        prepend_cache_markers(request["system_message"], config.cache_breakpoint_tokens)
-    
-    return {"request": request}
+Each request adds lines to `<hermes home>/plugin-data/context-cache-stabilizer/requests.jsonl`. No message text is stored: only sizes, tool names and the headings of the system prompt. Past 20 MB the file is renamed to `requests.1.jsonl` and a new one starts.
+
+## Install
+
+```bash
+hermes plugins install ElSerda/context-cache-stabilizer
+hermes plugins enable context-cache-stabilizer
+hermes gateway restart
 ```
 
-This preserves the KV-cache prefix across turns because the provider sees an identical prompt structure.
+## Read the measurements
 
-## Logging
+```bash
+hermes context-cache report                    # the latest conversation
+hermes context-cache report --session local-1a2b --last 10
+hermes context-cache path                      # where the file is
+```
 
-The plugin logs debug messages when stabilizations are applied:
+The report shows one row per request:
 
-- `Stabilized N tool definitions` — when tools are sorted
-- `Froze N timestamps` — when timestamps are replaced
-- `Injected N cache breakpoint tokens` — when breakpoints are added
+| Column        | Meaning                                                                                   |
+|---------------|-------------------------------------------------------------------------------------------|
+| est tok       | request characters divided by 4, an estimate                                              |
+| prompt tok    | prompt tokens the provider reported                                                       |
+| cached        | of those, tokens read from the provider's cache                                           |
+| tools ch      | characters of the tool definitions                                                        |
+| system ch     | characters of the system prompt                                                           |
+| user / assist / tool ch | characters of the messages of each role                                         |
+| same as prev  | share of the request identical to the previous one of the conversation, from the start    |
+| ttfb          | time to the first streamed chunk                                                          |
 
-Enable debug logging in Hermes config to see these:
+Then the parts of the latest system prompt and its tools, largest first.
+
+LM Studio reports no cached tokens. A short ttfb there is the sign that the prompt was mostly read from the KV cache.
+
+## Settings
 
 ```yaml
-logging:
-  level: DEBUG
-  filters:
-    - context-cache-stabilizer
+plugins:
+  entries:
+    context-cache-stabilizer:
+      settings:
+        enabled: true   # false: nothing is written
 ```
 
-## Error handling
+## Limits
 
-The middleware is wrapped in try/except so a crash here **never breaks the turn**. If an error occurs, it logs the exception and returns `None` (skipping stabilization for that request).
-
-## Limitations
-
-- **Cold resume** — After a Hermes restart, the first request is always outside the cache window (LM Studio doesn't persist KV-cache between sessions)
-- **Compression** — The plugin stabilizes *after* compression; if compression itself changes the prefix, that's handled separately by Hermes' context engine plugins
+- Auxiliary calls (compression summaries, titles) do not go through `llm_execution` and are not measured.
+- The "same as prev" share compares the request as Hermes serializes it, not the provider's tokens. A difference near the start still breaks a prefix cache even if the share stays high.
 
 ## License
 
